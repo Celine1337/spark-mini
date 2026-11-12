@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run tests
+        run: python -m unittest discover -s tests
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" spark.py \
+            --title "spark-mini $GITHUB_REF_NAME" \
+            --notes "Spark Mini - local code & writing assistant over open-weight models (default Qwen2.5-Coder). Stdlib CLI + optional LoRA pipeline; no trained weights included. Run: python spark.py ask 'hi' --backend mock"

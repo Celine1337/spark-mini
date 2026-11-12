@@ -1,0 +1,47 @@
+{
+  "name": "spark mini",
+  "slug": "spark-mini",
+  "kicker": "open-weight ai assistant",
+  "subtitle": "local code & writing assistant.",
+  "avatar": "star",
+  "hero_pills": [
+    ["pin", "stdlib CLI · local inference"],
+    ["code", "Base: Qwen2.5-Coder (open)"]
+  ],
+  "pills": [
+    {"id": "ru", "icon": "book", "label": "README RU"},
+    {"id": "en", "icon": "book", "label": "README EN"},
+    {"id": "release", "icon": "tag", "label": "Releases"},
+    {"id": "ci", "icon": "check", "label": "CI"},
+    {"id": "license", "icon": "doc", "label": "MIT"}
+  ],
+  "sections": {
+    "en": [
+      ["about", "About", "doc"],
+      ["features", "Features", "star"],
+      ["checks", "Modes & pipeline", "check"],
+      ["stack", "Tech stack", "code"],
+      ["quick", "Quick start", "play"],
+      ["shots", "Screenshots", "image"],
+      ["tests", "Tests", "check"]
+    ],
+    "ru": [
+      ["about", "О проекте", "doc"],
+      ["features", "Возможности", "star"],
+      ["checks", "Режимы и пайплайн", "check"],
+      ["stack", "Технологии", "code"],
+      ["quick", "Быстрый старт", "play"],
+      ["shots", "Скриншоты", "image"],
+      ["tests", "Тесты", "check"]
+    ]
+  },
+  "chips": {
+    "MAIN": ["Python 3.9+", "stdlib CLI", "Ollama / OpenAI API"],
+    "TOOLS": ["LoRA / QLoRA (PEFT)", "unittest", "Pillow (docs)"]
+  },
+  "stats": [
+    ["32", "tests"],
+    ["3", "OSes in CI"],
+    ["v1.0.0", "latest release"]
+  ]
+}

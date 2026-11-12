@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.9", "3.12"]
+        exclude:
+          # ubuntu-latest (26.04) has no setup-python builds for 3.9
+          - os: ubuntu-latest
+            python: "3.9"
+        include:
+          - os: ubuntu-24.04
+            python: "3.9"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+      - name: CLI smoke test (offline mock backend)
+        shell: bash
+        run: |
+          python spark.py --version
+          python spark.py ask "hi" --backend mock
+          python spark.py code explain --file spark.py --backend mock
+          python spark.py repo "how does context selection work?" --backend mock
+          python finetune/eval.py --backend mock
