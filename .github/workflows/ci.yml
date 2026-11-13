@@ -34,4 +34,6 @@ jobs:
           python spark.py ask "hi" --backend mock
           python spark.py code explain --file spark.py --backend mock
           python spark.py repo "how does context selection work?" --backend mock
+          python spark.py search "BM25 chunk ranking" --topk 3
+          python spark.py index
           python finetune/eval.py --backend mock

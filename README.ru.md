@@ -25,16 +25,36 @@
 заглушки, поэтому демо, тесты и CI работают офлайн **без загруженной модели** —
 все скриншоты ниже помечены `mock` именно поэтому.
 
+**v1.1 делает сам инструментарий намного умнее.** Контекст репозитория — больше
+не наивный TF-IDF по целому файлу плюс обрезанная «голова». Настоящий лексический
+поисковый движок (`retrieval.py`) режет код по границам определений, а текст по
+абзацам, токенизирует идентификаторы (`invoiceTotal` совпадает с `invoice_total`),
+ранжирует чанки по **Okapi BM25** с бустом символов и имён файлов, инкрементально
+кэширует индекс в `.spark/` и упаковывает в промпт **цитируемые, ограниченные по
+токенам** выдержки (`path:start-end`). Рассуждает по-прежнему базовая модель —
+просто теперь она видит *нужный* код, а не первые 1500 символов файла.
+
 <img src="docs/style/sec-features-ru.png" alt="Возможности" width="100%">
 
-- Пять режимов: `ask`, интерактивный `chat`, `code` (write / fix / explain /
+- Семь режимов: `ask`, интерактивный `chat`, `code` (write / fix / explain /
   review / test одного файла), `repo` (ответ с найденным контекстом репозитория),
-  `write` (текст в тоне plain / concise / friendly / formal).
-- RAG-lite контекст: TF-IDF оценка терминов по исходникам, top-k фрагментов в
-  промпт — без эмбеддингов и векторных БД, только stdlib.
+  `write` (текст в тоне plain / concise / friendly / formal), плюс две
+  поисковые команды без модели: `search` (ранжирование чанков) и `index`
+  (построение / осмотр индекса).
+- **Поисковый движок BM25** (`retrieval.py`, только stdlib): структурные чанки
+  (код по границам `def`/`class`/`fn`/…, текст по абзацам) с 1-базовыми номерами
+  строк; токенизация идентификаторов (подтокены camelCase / snake_case, удаление
+  стоп-слов); Okapi BM25 (k1=1.5, b=0.75) с нормализацией по длине документа;
+  буст символов и имён файлов; постоянный инкрементально инвалидируемый кэш
+  `.spark/index.json` по mtime+size; упаковка контекста с бюджетом токенов и
+  цитатами `path:start-end`. Без эмбеддингов и векторных БД.
 - Три бэкенда за одним интерфейсом: `ollama`, `openai` (совместимый), `mock`.
   Переключение `--backend` или `SPARK_BACKEND`; адрес `--base-url`.
-- `--json` машинный вывод (persona, backend, model, response, context);
+- Опциональный `--stream` потоковый вывод токенов для `ollama` / `openai`
+  (NDJSON / SSE); `chat` получает `--root` (контекст репозитория), `/reset` и
+  `/context`, и автоматическую обрезку памяти по бюджету токенов.
+- `--json` машинный вывод (persona, backend, model, response, context;
+  `search`/`index` отдают ранжированные результаты / статистику индекса);
   `--temperature`, `--max-tokens`, `--timeout`; `--no-color` / `NO_COLOR`.
 - Опциональный GPU-пайплайн в `finetune/`: подготовка chat-датасета, обучение
   LoRA / QLoRA адаптера, слияние и оценка маленьким офлайн eval-харнессом.
@@ -46,10 +66,12 @@
 | Команда | Что делает |
 |---------|------------|
 | `spark.py ask "…"` | одиночный вопрос |
-| `spark.py chat` | интерактивная сессия (`/exit` — выход) |
+| `spark.py chat` | интерактивная сессия (`/exit`, `/reset`, `/context`; `--root` — контекст репо) |
 | `spark.py code <task> --file F` | write / fix / explain / review / test одного файла |
-| `spark.py repo "…" --root DIR` | ответ по top-k найденным фрагментам репозитория |
+| `spark.py repo "…" --root DIR` | ответ по top-k найденным цитируемым чанкам репозитория |
 | `spark.py write "…" --style S` | текст в выбранном тоне |
+| `spark.py search "…" --root DIR` | ранжирование чанков репо по BM25 (без модели) |
+| `spark.py index --root DIR` | построение / осмотр индекса (`--rebuild` — принудительно) |
 
 Пайплайн дообучения (нужен ваш GPU; веса **не** входят в репозиторий):
 
@@ -62,7 +84,7 @@
 
 <img src="docs/style/sec-stack-ru.png" alt="Технологии" width="100%">
 
-<img src="docs/style/chips.png" alt="Python 3.9+, stdlib CLI, Ollama / OpenAI API; LoRA / QLoRA (PEFT), unittest, Pillow" width="100%">
+<img src="docs/style/chips.png" alt="Python 3.9+, stdlib CLI, BM25 retrieval, Ollama / OpenAI API; LoRA / QLoRA (PEFT), unittest, Pillow" width="100%">
 
 <img src="docs/style/sec-quick-ru.png" alt="Быстрый старт" width="100%">
 
@@ -72,6 +94,8 @@
 $ python spark.py ask "hi" --backend mock
 $ python spark.py code explain --file spark.py --backend mock
 $ python spark.py repo "how does context selection work?" --backend mock
+$ python spark.py search "BM25 chunk ranking" --topk 3
+$ python spark.py index
 $ python finetune/eval.py --backend mock
 ```
 
@@ -82,6 +106,7 @@ $ ollama pull qwen2.5-coder:1.5b
 $ python spark.py code review --file app.py
 $ python spark.py repo "where is auth handled?" --root .
 $ python spark.py write "release notes for v1.1" --style concise
+$ python spark.py ask "explain this stack trace" --stream
 ```
 
 OpenAI-совместимый сервер (llama.cpp / vLLM / LM Studio):
@@ -105,11 +130,14 @@ $ python finetune/eval.py --backend ollama --model spark-merged
 
 <img src="docs/style/sec-shots-ru.png" alt="Скриншоты" width="100%">
 
-Оба скриншота используют офлайн-бэкенд `mock` — заглушки, модель не загружена.
+Скриншоты `code` и `repo` используют офлайн-бэкенд `mock` — заглушки, модель не
+загружена. Скриншот `search` — чистый поиск (ранжирование BM25, вообще без модели).
 
 ![режим code](docs/code.png)
 
-![режим repo с найденным контекстом](docs/repo.png)
+![режим repo с найденным цитируемым контекстом](docs/repo.png)
+
+![режим search: чанки с оценками BM25](docs/search.png)
 
 <img src="docs/style/sec-tests-ru.png" alt="Тесты" width="100%">
 
@@ -117,17 +145,19 @@ $ python finetune/eval.py --backend ollama --model spark-merged
 $ python -m unittest discover -s tests -v
 ```
 
-32 тестов покрывают сборщики промптов, все три бэкенда (включая локальный
-фейковый HTTP-сервер, проверяющий пути и тела запросов), TF-IDF селектор
-контекста, коды выхода CLI, подготовку данных, eval-оценку и корректную
-деградацию GPU-скриптов без зависимостей. Картинки воспроизводимы:
+100 тестов покрывают сборщики промптов, все три бэкенда (включая локальный
+фейковый HTTP-сервер, проверяющий пути и тела запросов, плюс потоковые NDJSON/SSE),
+поисковый движок BM25 (токенизация, чанки, буст символов/файлов, инвалидация кэша,
+упаковка с бюджетом), команды `search`/`index`/`chat`, коды выхода CLI, подготовку
+данных, eval-оценку и корректную деградацию GPU-скриптов без зависимостей.
+Картинки воспроизводимы:
 
 ```console
 $ pip install pillow
-$ python tools/make_shots.py      # docs/code.png, docs/repo.png (mock backend)
+$ python tools/make_shots.py      # docs/code.png, docs/repo.png, docs/search.png
 $ python tools/make_style.py tools/style.json docs/style
 ```
 
-<img src="docs/style/stats.png" alt="32 тестов, 3 ОС в CI, v1.0.0" width="100%">
+<img src="docs/style/stats.png" alt="100 тестов, 3 ОС в CI, v1.1.0" width="100%">
 
 [MIT](LICENSE) © Celine1337

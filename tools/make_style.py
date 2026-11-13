@@ -31,9 +31,31 @@ F_BOLD = "C:/Windows/Fonts/segoeuib.ttf"
 F_REG = "C:/Windows/Fonts/segoeui.ttf"
 F_MONO = "C:/Windows/Fonts/consola.ttf"
 
+# Cross-platform fallbacks so the assets regenerate on Linux/macOS too.
+_FALLBACKS = {
+    F_BOLD: ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+             "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+             "/Library/Fonts/Arial Bold.ttf"],
+    F_REG: ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/System/Library/Fonts/Supplemental/Arial.ttf",
+            "/Library/Fonts/Arial.ttf"],
+    F_MONO: ["/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+             "/System/Library/Fonts/Menlo.ttc",
+             "/Library/Fonts/Courier New.ttf"],
+}
+
+
+def _resolve(path):
+    if os.path.isfile(path):
+        return path
+    for cand in _FALLBACKS.get(path, []):
+        if os.path.isfile(cand):
+            return cand
+    return path
+
 
 def font(path, size):
-    return ImageFont.truetype(path, size)
+    return ImageFont.truetype(_resolve(path), size)
 
 
 def rounded_mask(size, radius):

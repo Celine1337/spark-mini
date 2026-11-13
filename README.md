@@ -25,17 +25,37 @@ vLLM, LM Studio). A built-in `mock` backend produces deterministic placeholder
 answers so demos, tests and CI run offline with **no model loaded** — every
 screenshot below is labelled `mock` for that reason.
 
+**v1.1 makes the tooling itself much smarter.** Repository context is no longer a
+naive whole-file TF-IDF score plus a truncated file head. A real lexical retrieval
+engine (`retrieval.py`) now splits code at definition boundaries and prose at
+paragraphs, tokenizes identifiers (so `invoiceTotal` matches `invoice_total`),
+ranks chunks with **Okapi BM25** plus symbol / filename boosting, caches the index
+incrementally in `.spark/`, and packs **cited, token-budgeted** excerpts
+(`path:start-end`) into the prompt. The base model still does the reasoning — it
+just finally sees the *right* code instead of the first 1500 characters of a file.
+
 <img src="docs/style/sec-features-en.png" alt="Features" width="100%">
 
-- Five modes: `ask`, interactive `chat`, `code` (write / fix / explain / review /
+- Seven modes: `ask`, interactive `chat`, `code` (write / fix / explain / review /
   test a single file), `repo` (question answered with retrieved repo context),
-  and `write` (prose in plain / concise / friendly / formal tone).
-- RAG-lite repository context: TF-IDF term scoring over source files, top-k
-  snippets injected into the prompt — no embeddings, no vector DB, stdlib only.
+  `write` (prose in plain / concise / friendly / formal tone), plus two
+  model-free retrieval commands: `search` (rank repo chunks) and `index`
+  (build / inspect the retrieval index).
+- **BM25 retrieval engine** (`retrieval.py`, stdlib only): structure-aware
+  chunking (code at `def`/`class`/`fn`/… boundaries, prose at paragraphs) with
+  1-based line ranges; identifier-aware tokenization (camelCase / snake_case
+  sub-tokens, stopword removal); Okapi BM25 (k1=1.5, b=0.75) with document-length
+  normalization; symbol- and filename-boosting; a persistent, incrementally
+  invalidated `.spark/index.json` cache keyed on mtime+size; token-budgeted
+  context packing with `path:start-end` citations. No embeddings, no vector DB.
 - Three backends behind one interface: `ollama`, `openai` (compatible), `mock`.
   Switch with `--backend` or `SPARK_BACKEND`; point anywhere with `--base-url`.
-- `--json` machine-readable output (persona, backend, model, response, context);
-  `--temperature`, `--max-tokens`, `--timeout` knobs; `--no-color` / `NO_COLOR`.
+- Opt-in `--stream` token streaming for `ollama` / `openai` (NDJSON / SSE);
+  `chat` gains `--root` repo augmentation, `/reset` and `/context`, and automatic
+  token-budgeted memory trimming so long sessions stay within context.
+- `--json` machine-readable output (persona, backend, model, response, context;
+  `search`/`index` emit ranked results / index stats); `--temperature`,
+  `--max-tokens`, `--timeout` knobs; `--no-color` / `NO_COLOR`.
 - Optional GPU fine-tune pipeline in `finetune/`: prepare a chat dataset, train a
   LoRA / QLoRA adapter, merge it, and score it with a tiny offline eval harness.
 - Honest failure modes: unreachable backend → exit `1` with a clear message;
@@ -46,10 +66,12 @@ screenshot below is labelled `mock` for that reason.
 | Command | What it does |
 |---------|--------------|
 | `spark.py ask "…"` | one-shot question |
-| `spark.py chat` | interactive session (`/exit` to quit) |
+| `spark.py chat` | interactive session (`/exit`, `/reset`, `/context`; `--root` for repo context) |
 | `spark.py code <task> --file F` | write / fix / explain / review / test one file |
-| `spark.py repo "…" --root DIR` | answer using top-k retrieved repo snippets |
+| `spark.py repo "…" --root DIR` | answer using top-k retrieved, cited repo chunks |
 | `spark.py write "…" --style S` | draft prose in the chosen tone |
+| `spark.py search "…" --root DIR` | rank repo chunks by BM25 (no model needed) |
+| `spark.py index --root DIR` | build / inspect the retrieval index (`--rebuild` to force) |
 
 Fine-tune pipeline (needs your own GPU; weights are **not** included):
 
@@ -62,7 +84,7 @@ Fine-tune pipeline (needs your own GPU; weights are **not** included):
 
 <img src="docs/style/sec-stack-en.png" alt="Tech stack" width="100%">
 
-<img src="docs/style/chips.png" alt="Python 3.9+, stdlib CLI, Ollama / OpenAI API; LoRA / QLoRA (PEFT), unittest, Pillow" width="100%">
+<img src="docs/style/chips.png" alt="Python 3.9+, stdlib CLI, BM25 retrieval, Ollama / OpenAI API; LoRA / QLoRA (PEFT), unittest, Pillow" width="100%">
 
 <img src="docs/style/sec-quick-en.png" alt="Quick start" width="100%">
 
@@ -72,6 +94,8 @@ Offline, no model needed (this is what CI runs):
 $ python spark.py ask "hi" --backend mock
 $ python spark.py code explain --file spark.py --backend mock
 $ python spark.py repo "how does context selection work?" --backend mock
+$ python spark.py search "BM25 chunk ranking" --topk 3
+$ python spark.py index
 $ python finetune/eval.py --backend mock
 ```
 
@@ -82,6 +106,7 @@ $ ollama pull qwen2.5-coder:1.5b
 $ python spark.py code review --file app.py
 $ python spark.py repo "where is auth handled?" --root .
 $ python spark.py write "release notes for v1.1" --style concise
+$ python spark.py ask "explain this stack trace" --stream
 ```
 
 OpenAI-compatible server (llama.cpp / vLLM / LM Studio):
@@ -105,11 +130,14 @@ path, missing data, or missing GPU dependencies.
 
 <img src="docs/style/sec-shots-en.png" alt="Screenshots" width="100%">
 
-Both shots use the offline `mock` backend — placeholder answers, no model loaded.
+The `code` and `repo` shots use the offline `mock` backend — placeholder answers,
+no model loaded. The `search` shot is pure retrieval (BM25 ranking, no model at all).
 
 ![code mode](docs/code.png)
 
-![repo mode with retrieved context](docs/repo.png)
+![repo mode with retrieved, cited context](docs/repo.png)
+
+![search mode: BM25-ranked chunks with scores](docs/search.png)
 
 <img src="docs/style/sec-tests-en.png" alt="Tests" width="100%">
 
@@ -117,17 +145,19 @@ Both shots use the offline `mock` backend — placeholder answers, no model load
 $ python -m unittest discover -s tests -v
 ```
 
-32 tests cover the prompt builders, all three backends (including a local fake
-HTTP server asserting request paths and payloads), the TF-IDF context selector,
-CLI exit codes, the data preparer, the eval scorer, and graceful degradation of
-the GPU scripts when dependencies are absent. Images are regenerable:
+100 tests cover the prompt builders, all three backends (including a local fake
+HTTP server asserting request paths and payloads, plus NDJSON/SSE streaming),
+the BM25 retrieval engine (tokenization, chunking, symbol/filename boosting,
+cache invalidation, budgeted packing), the `search`/`index`/`chat` commands, CLI
+exit codes, the data preparer, the eval scorer, and graceful degradation of the
+GPU scripts when dependencies are absent. Images are regenerable:
 
 ```console
 $ pip install pillow
-$ python tools/make_shots.py      # docs/code.png, docs/repo.png (mock backend)
+$ python tools/make_shots.py      # docs/code.png, docs/repo.png, docs/search.png
 $ python tools/make_style.py tools/style.json docs/style
 ```
 
-<img src="docs/style/stats.png" alt="32 tests, 3 OSes in CI, v1.0.0" width="100%">
+<img src="docs/style/stats.png" alt="100 tests, 3 OSes in CI, v1.1.0" width="100%">
 
 [MIT](LICENSE) © Celine1337

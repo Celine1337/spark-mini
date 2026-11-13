@@ -76,6 +76,18 @@ def main():
     render("repo", ansi, 'python spark.py repo "explain why context selection matters" --backend mock',
            "spark — repo")
 
+    results = spark.search(ROOT, "BM25 chunk ranking score", topk=3)
+    lines = [header("search · BM25 ranked chunks · no model needed"), ""]
+    for r in results:
+        lines.append(BOLD + PINK + "%s:%d-%d" % (r["relpath"], r["start"], r["end"])
+                     + RESET + DIM + "  [score %.3f]" % r["score"] + RESET)
+        snippet = r["text"].split("\n")[:4]
+        lines.extend(CYAN + ln + RESET for ln in snippet)
+        lines.append("")
+    render("search", "\n".join(lines),
+           'python spark.py search "BM25 chunk ranking score" --topk 3',
+           "spark — search")
+
 
 if __name__ == "__main__":
     main()

@@ -5,6 +5,7 @@ Usage: python render_terminal.py input.ansi output.png --title "..." --cmd "tiny
 Requires Pillow (pip install pillow). Windows: uses Consolas / Segoe UI.
 """
 import argparse
+import os
 import re
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -23,6 +24,24 @@ PAD_X, PAD_Y = 22, 18
 TITLE_H = 38
 MARGIN = 36
 RADIUS = 10
+
+_FONT_FALLBACKS = {
+    "C:/Windows/Fonts/consola.ttf": ["/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+                                     "/System/Library/Fonts/Menlo.ttc"],
+    "C:/Windows/Fonts/consolab.ttf": ["/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+                                      "/System/Library/Fonts/Menlo.ttc"],
+    "C:/Windows/Fonts/segoeui.ttf": ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                                     "/System/Library/Fonts/Supplemental/Arial.ttf"],
+}
+
+
+def _font(path, size):
+    if not os.path.isfile(path):
+        for cand in _FONT_FALLBACKS.get(path, []):
+            if os.path.isfile(cand):
+                path = cand
+                break
+    return ImageFont.truetype(path, size)
 
 
 def parse_ansi(text):
@@ -58,9 +77,9 @@ def blend(hex_color, other, t):
 
 
 def render(lines, title, cmd, out_path):
-    reg = ImageFont.truetype("C:/Windows/Fonts/consola.ttf", FONT_SIZE)
-    boldf = ImageFont.truetype("C:/Windows/Fonts/consolab.ttf", FONT_SIZE)
-    uif = ImageFont.truetype("C:/Windows/Fonts/segoeui.ttf", 12)
+    reg = _font("C:/Windows/Fonts/consola.ttf", FONT_SIZE)
+    boldf = _font("C:/Windows/Fonts/consolab.ttf", FONT_SIZE)
+    uif = _font("C:/Windows/Fonts/segoeui.ttf", 12)
     cw = reg.getlength("M")
 
     if cmd:

@@ -36,12 +36,12 @@
     ]
   },
   "chips": {
-    "MAIN": ["Python 3.9+", "stdlib CLI", "Ollama / OpenAI API"],
+    "MAIN": ["Python 3.9+", "stdlib CLI", "BM25 retrieval", "Ollama / OpenAI API"],
     "TOOLS": ["LoRA / QLoRA (PEFT)", "unittest", "Pillow (docs)"]
   },
   "stats": [
-    ["32", "tests"],
+    ["100", "tests"],
     ["3", "OSes in CI"],
-    ["v1.0.0", "latest release"]
+    ["v1.1.0", "latest release"]
   ]
 }

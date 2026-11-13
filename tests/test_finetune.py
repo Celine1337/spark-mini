@@ -31,8 +31,10 @@ class PrepareData(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             rc = pd.main(["--jsonl", src, "--out", out, "--val-split", "0.5"])
         self.assertEqual(rc, 0)
-        train = [json.loads(l) for l in open(os.path.join(out, "train.jsonl"))]
-        val = [json.loads(l) for l in open(os.path.join(out, "val.jsonl"))]
+        with open(os.path.join(out, "train.jsonl")) as fh:
+            train = [json.loads(l) for l in fh]
+        with open(os.path.join(out, "val.jsonl")) as fh:
+            val = [json.loads(l) for l in fh]
         self.assertEqual(len(train) + len(val), 2)  # deduped
         self.assertEqual(train[0]["messages"][0]["role"], "system")
 
@@ -45,7 +47,8 @@ class PrepareData(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             rc = pd.main(["--code", code, "--out", out])
         self.assertEqual(rc, 0)
-        rows = [json.loads(l) for l in open(os.path.join(out, "train.jsonl"))]
+        with open(os.path.join(out, "train.jsonl")) as fh:
+            rows = [json.loads(l) for l in fh]
         self.assertTrue(rows)
         self.assertIn("Complete the following py", rows[0]["messages"][1]["content"])
 
