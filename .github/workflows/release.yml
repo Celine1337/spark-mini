@@ -21,6 +21,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" spark.py \
+          gh release create "$GITHUB_REF_NAME" spark.py retrieval.py \
             --title "spark-mini $GITHUB_REF_NAME" \
-            --notes "Spark Mini - local code & writing assistant over open-weight models (default Qwen2.5-Coder). Stdlib CLI + optional LoRA pipeline; no trained weights included. Run: python spark.py ask 'hi' --backend mock"
+            --notes "Spark Mini - local code & writing assistant over open-weight models (default Qwen2.5-Coder). Stdlib CLI + BM25 repo retrieval + optional LoRA pipeline; no trained weights included. Run: python spark.py ask 'hi' --backend mock"
