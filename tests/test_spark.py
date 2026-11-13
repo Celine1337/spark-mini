@@ -402,6 +402,19 @@ class SearchIndexCli(unittest.TestCase):
         rc, _ = self._run(["index", "--root", os.path.join(self.root, "nope")])
         self.assertEqual(rc, 2)
 
+    def test_search_non_utf8_console(self):
+        # Windows cp1252 console must not crash on Cyrillic repo text
+        with open(os.path.join(self.root, "ru.md"), "w", encoding="utf-8") as fh:
+            fh.write("документация про invoice total\n")
+        buf = io.BytesIO()
+        wrapper = io.TextIOWrapper(buf, encoding="cp1252", errors="strict")
+        with contextlib.redirect_stdout(wrapper), \
+                contextlib.redirect_stderr(io.StringIO()):
+            rc = cl.main(["search", "invoice total", "--root", self.root])
+        wrapper.flush()
+        self.assertEqual(rc, 0)
+        self.assertTrue(buf.getvalue())
+
 
 class ChatCommands(unittest.TestCase):
     def _opts(self):

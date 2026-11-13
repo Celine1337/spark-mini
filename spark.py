@@ -389,7 +389,18 @@ def run_chat(opts):
         messages.append({"role": "assistant", "content": reply})
 
 
+def _safe_streams():
+    # Windows consoles may use a legacy code page (cp1252) that cannot encode
+    # repo text (Cyrillic, emoji, ...). Replace unencodable chars instead of crashing.
+    for s in (sys.stdout, sys.stderr):
+        try:
+            s.reconfigure(errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
 def main(argv=None):
+    _safe_streams()
     opts = build_parser().parse_args(argv)
     if not opts.base_url:
         opts.base_url = DEFAULT_OLLAMA if opts.backend == "ollama" else DEFAULT_OPENAI
